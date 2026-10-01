@@ -40,11 +40,6 @@ browser_from_desktop_id() {
 }
 
 if (($# == 0)); then
-  # Asked once. This used to run xdg-settings twice, because the unmatched arm
-  # ran it again to echo the raw value -- and the unmatched arm is the common
-  # one for any browser that registered itself. Every row of the Defaults >
-  # Browser menu runs this command in its checked guard, so the menu paid for
-  # the second call once per row.
   current=$(env -u BROWSER xdg-settings get default-web-browser)
 
   case "$current" in
