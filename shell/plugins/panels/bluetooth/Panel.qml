@@ -151,6 +151,14 @@ Panel {
     return rows
   }
 
+  // A device found while the pointer rests on the list joins the pin, so the
+  // next arrival cannot sort in above it once the pointer has moved onto it.
+  onScrollRowsChanged: {
+    if (pinnedOrder.length === 0) return
+    var order = scrollRows.map(function(row) { return row.dev.address })
+    if (order.join("\n") !== pinnedOrder.join("\n")) pinnedOrder = order
+  }
+
   // Connected devices render above the scroll area; same primitives-only
   // projection so those delegates never hold Device QObject wrappers either.
   readonly property var connectedRows: {

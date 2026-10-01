@@ -127,6 +127,20 @@ assertDeepEqual(
   'bluetooth sorts the list again once the pointer leaves'
 )
 
+// A device found while the pointer is on the list lands at the end, and the
+// pointer can then move onto it; a later arrival must not take that row either.
+const withZeiss = addresses(bluetooth.deviceLists(scanning.concat([{ name: 'Zeiss', address: 'z' }]), onScreen).discovered)
+assertDeepEqual(
+  addresses(bluetooth.deviceLists(scanning.concat([{ name: 'Zeiss', address: 'z' }, { name: 'Bose', address: 'b' }]), withZeiss).discovered),
+  ['m', 'p', 's', 'z', 'b'],
+  'bluetooth holds a row that arrived while the pointer was on the list'
+)
+const scrollRowsHandler = panelSource.match(/onScrollRowsChanged: \{[\s\S]*?\n  \}/)
+assert(
+  scrollRowsHandler && /pinnedOrder\.length === 0\) return/.test(scrollRowsHandler[0]) && /pinnedOrder = order/.test(scrollRowsHandler[0]),
+  'bluetooth adds devices found under the pointer to the pinned order'
+)
+
 // A pin that outlived the pointer would ignore every later discovery result.
 assert(
   /HoverHandler \{[\s\S]{0,200}root\.pinnedOrder = hovered/.test(panelSource),
