@@ -20,14 +20,21 @@ trap cleanup EXIT
 stub_bin=$tmpdir/bin
 mkdir -p "$stub_bin"
 
-# Only the browsers listed here answer pgrep, so a browser actually installed on
-# the machine running this test is never probed and never launched.
+# Only the browsers listed here are in the process table and count as
+# installed, so a browser on the machine running this test is never launched.
 running=$tmpdir/running
 : > "$running"
 
-cat > "$stub_bin/pgrep" <<'STUB'
+cat > "$stub_bin/ps" <<'STUB'
 #!/bin/bash
-grep -Fxq -- "${!#}" "$RUNNING_BROWSERS"
+while read -r name; do
+  printf '%s /usr/lib/%s/%s\n' "$name" "$name" "$name"
+done < "$RUNNING_BROWSERS"
+STUB
+
+cat > "$stub_bin/omarchy-cmd-present" <<'STUB'
+#!/bin/bash
+[[ -x $STUB_BIN/$1 ]]
 STUB
 
 cat > "$stub_bin/omarchy-theme-set-browser-policy" <<'STUB'
@@ -54,10 +61,17 @@ STUB
 
 chmod +x "$stub_bin"/*
 
+# A color.json that does not match, so the setter never skips the refresh.
+policy_dir=$tmpdir/policies
+mkdir -p "$policy_dir"
+printf '{"BrowserThemeColor": "#ff0000"}\n' > "$policy_dir/color.json"
+
 run_theme_set() {
   local markers=$1 rc=0
   mkdir -p "$markers"
   RUNNING_BROWSERS=$running \
+    STUB_BIN=$stub_bin \
+    OMARCHY_BROWSER_POLICY_DIRS=$policy_dir \
     POLICY_MARKER=$tmpdir/policy \
     POLICY_STATUS=${POLICY_STATUS:-0} \
     REFRESH_MARKER_DIR=$markers \
