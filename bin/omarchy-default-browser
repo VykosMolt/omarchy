@@ -36,7 +36,7 @@ browser_from_exec_line() {
     if [[ $escaped == "true" ]]; then
       word+=$character
       escaped=false
-    elif [[ $character == '\' ]]; then
+    elif [[ $character == $'\\' ]]; then
       escaped=true
       started=true
     elif [[ $character == '"' ]]; then
