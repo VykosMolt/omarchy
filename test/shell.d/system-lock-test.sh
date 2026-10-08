@@ -68,6 +68,55 @@ assert(finishUnlock, 'the lock service exposes authenticated unlock cleanup')
 vm.runInNewContext('(function() {' + finishUnlock[1] + '})()', context)
 assertEqual(receipts.result(context.requestLedger, qmlRequest.requestId).state, 'secured', 'the shipped finishUnlock implementation preserves the request receipt')
 
+const trackedRequest = source.match(/function request\(\): string \{([\s\S]*?)\n    \}/)
+const lockHandler = source.match(/onLockStateChanged: \{([\s\S]*?)\n    \}/)
+assert(trackedRequest && lockHandler, 'the service exposes tracked requests and lock-release lifecycle')
+for (const lastFlag of ['secure', 'locked']) {
+  const duringUnlock = {
+    LockRequests: receipts,
+    requestLedger: receipts.create('unlock-' + lastFlag),
+    passwordPamConfigured: true,
+    lockRequested: false,
+    pendingSessionLock: false,
+    sessionLock: { locked: lastFlag === 'locked', secure: lastFlag === 'secure' },
+    secure: lastFlag === 'secure',
+    logEvent() {},
+    resetAuthenticationState() {},
+    runWake() {},
+    sessionLockStabilizeTimer: { stop() {} },
+    pendingSessionLockTimer: { stop() {} },
+    beginLock() { this.lockRequested = true; return true }
+  }
+  duringUnlock.root = duringUnlock
+  Object.defineProperty(duringUnlock, 'locked', {
+    get() { return this.lockRequested || this.sessionLock.locked || this.sessionLock.secure }
+  })
+  const inFlight = JSON.parse(vm.runInNewContext('(function() {' + trackedRequest[1] + '})()', duringUnlock))
+  if (lastFlag === 'secure') {
+    duringUnlock.sessionLock.secure = false
+    duringUnlock.secure = false
+    vm.runInNewContext(secureHandler[1], duringUnlock)
+  } else {
+    duringUnlock.sessionLock.locked = false
+    // This handler's "locked" refers to the WlSessionLock, not root.locked.
+    const withLockSignal = Object.create(duringUnlock)
+    withLockSignal.root = duringUnlock
+    Object.defineProperty(withLockSignal, 'locked', { value: false })
+    vm.runInNewContext(lockHandler[1], withLockSignal)
+  }
+  const afterUnlock = JSON.parse(vm.runInNewContext('(function() {' + trackedRequest[1] + '})()', duringUnlock))
+  assert(afterUnlock.requestId !== inFlight.requestId, 'a tracked call during ' + lastFlag + ' release is not reused after unlock')
+  assertEqual(afterUnlock.state, 'pending', 'a new call after ' + lastFlag + ' release cannot inherit an old secure outcome')
+}
+
+const jumped = receipts.create('clock-jump')
+const beforeJump = receipts.request(jumped, 0)
+receipts.secured(jumped, 1)
+receipts.released(jumped, 2)
+const afterJump = receipts.request(jumped, 100000)
+assertEqual(receipts.result(jumped, beforeJump.requestId).state, 'unknown', 'forward wall-clock jumps expire a receipt conservatively')
+assertEqual(afterJump.state, 'pending', 'a clock jump never turns an old success into a new request success')
+
 const legacy = source.match(/function lock\(\): string \{([\s\S]*?)\n    \}/)
 assert(legacy, 'legacy lock IPC remains available')
 const legacyRoot = { passwordPamConfigured: true, locked: false, beginLock() { this.locked = true; return true } }

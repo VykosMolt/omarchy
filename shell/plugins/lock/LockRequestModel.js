@@ -1,5 +1,7 @@
 // Receipts belong to one shell instance and remain valid after authentication.
-// Keep memory bounded without evicting a receipt inside the command's deadline.
+// Retain completions for thirty wall-clock seconds and never reuse a token.
+// A forward clock jump can expire a receipt early: it becomes unknown and
+// callers fail conservatively rather than accepting a different request.
 function create(instance) {
   return { instance: instance, sequence: 0, active: "", records: {}, order: [] }
 }

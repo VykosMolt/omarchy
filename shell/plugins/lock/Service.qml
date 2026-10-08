@@ -205,6 +205,10 @@ Item {
       return false
     }
 
+    // Legacy callers can start after an asynchronous unlock too.
+    if (requestLedger && requestLedger.active
+        && LockRequests.result(requestLedger, requestLedger.active).state === "secured")
+      LockRequests.released(requestLedger, Date.now())
     resetAuthenticationState()
     LockRequests.request(requestLedger, Date.now())
     lockRequested = true
@@ -450,11 +454,14 @@ Item {
         sessionLockStabilizeTimer.stop()
         pendingSessionLockTimer.stop()
         root.startFingerprint()
+      } else if (!root.lockRequested && !sessionLock.locked) {
+        LockRequests.released(root.requestLedger, Date.now())
       }
     }
 
     onLockStateChanged: {
       root.logEvent("session-locked=" + locked)
+      if (!locked) LockRequests.released(root.requestLedger, Date.now())
 
       if (locked) {
         root.pendingSessionLock = false
@@ -463,7 +470,6 @@ Item {
       }
 
       if (!locked && root.lockRequested) {
-        LockRequests.released(root.requestLedger, Date.now())
         root.lockRequested = false
         root.pendingSessionLock = false
         sessionLockStabilizeTimer.stop()
@@ -862,6 +868,9 @@ Item {
 
     function request(): string {
       if (!root.passwordPamConfigured) return JSON.stringify({ reason: "missing-pam" })
+      // An outcome may have been recorded while an earlier unlock was still
+      // releasing its compositor flags. Preserve its archive, not its reuse.
+      if (!root.locked) LockRequests.released(root.requestLedger, Date.now())
       var receipt = LockRequests.request(root.requestLedger, Date.now())
       if (!receipt) return JSON.stringify({ reason: "receipt-unavailable" })
       if (sessionLock.secure) LockRequests.secured(root.requestLedger, Date.now())
