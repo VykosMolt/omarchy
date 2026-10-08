@@ -51,7 +51,31 @@ Panel {
     return Model.hasHumanName(device)
   }
 
-  readonly property var deviceGroups: Model.deviceLists(devices)
+  // Row order held while the pointer is on the scroll list, empty otherwise.
+  // A click acts on whatever row is under the pointer, so a device found
+  // mid-scan must not sort in above the row being aimed at and take it.
+  property var pinnedOrder: []
+  property var pinnedSections: ({})
+  readonly property bool rowOrderPinned: opened && deviceListHover.hovered
+  onRowOrderPinnedChanged: {
+    if (rowOrderPinned) {
+      capturePinnedRows()
+    } else {
+      pinnedOrder = []
+      pinnedSections = ({})
+    }
+  }
+
+  function capturePinnedRows() {
+    var order = scrollRows.map(function(row) { return row.dev.address })
+    var sections = ({})
+    for (var i = 0; i < scrollRows.length; i++)
+      sections[scrollRows[i].dev.address] = scrollRows[i].displaySection
+    if (order.join("\n") !== pinnedOrder.join("\n")) pinnedOrder = order
+    if (JSON.stringify(sections) !== JSON.stringify(pinnedSections)) pinnedSections = sections
+  }
+
+  readonly property var deviceGroups: Model.deviceLists(devices, pinnedOrder)
   readonly property var connectedDevices: deviceGroups.connected || []
   readonly property var knownDevices: deviceGroups.known || []
   readonly property var discoveredDevices: deviceGroups.discovered || []
@@ -137,14 +161,13 @@ Panel {
   // scan turned up — flattened into one model so a ListView can own the
   // viewport. Each entry carries the section it came from, which is what lets
   // the delegate and the cursor keep working in section-relative terms.
-  readonly property var scrollRows: {
-    var rows = []
-    for (var k = 0; k < knownDevices.length; k++)
-      rows.push({ dev: Model.deviceRow(knownDevices[k]), section: "known", indexInSection: k })
-    if (sectionVisible("discovered"))
-      for (var d = 0; d < discoveredDevices.length; d++)
-        rows.push({ dev: Model.deviceRow(discoveredDevices[d]), section: "discovered", indexInSection: d })
-    return rows
+  readonly property var scrollRows: Model.scrollRows(deviceGroups,
+    sectionVisible("discovered"), pinnedOrder, pinnedSections)
+
+  // A device found while the pointer rests on the list joins the pin, so the
+  // next arrival cannot sort in above it once the pointer has moved onto it.
+  onScrollRowsChanged: {
+    if (rowOrderPinned) capturePinnedRows()
   }
 
   // Connected devices render above the scroll area; same primitives-only
@@ -183,8 +206,8 @@ Panel {
   function scrollSectionTitle(index) {
     var rows = scrollRows
     if (index < 0 || index >= rows.length) return ""
-    if (index > 0 && rows[index - 1].section === rows[index].section) return ""
-    return rows[index].section === "known" ? "PAIRED" : "AVAILABLE"
+    if (index > 0 && rows[index - 1].displaySection === rows[index].displaySection) return ""
+    return rows[index].displaySection === "known" ? "PAIRED" : "AVAILABLE"
   }
 
   function audioSinks() {
@@ -418,6 +441,10 @@ Panel {
       else { focusSection = "header" }
       actionFocused = false
       cursorActive = false
+    } else {
+      // Hiding the list leaves HoverHandler.hovered set, so the pointer never
+      // reports leaving and the order would stay pinned into the next open.
+      pinnedOrder = []
     }
   }
 
@@ -825,6 +852,10 @@ Panel {
           onCurrentIndexChanged: if (currentIndex >= 0) Qt.callLater(keepCurrentVisible)
           function keepCurrentVisible() {
             if (currentIndex >= 0) positionViewAtIndex(currentIndex, ListView.Contain)
+          }
+
+          HoverHandler {
+            id: deviceListHover
           }
 
           delegate: Item {
