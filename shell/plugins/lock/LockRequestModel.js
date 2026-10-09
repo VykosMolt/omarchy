@@ -1,5 +1,5 @@
 // Receipts belong to one shell instance and remain valid after authentication.
-// Retain archived completions for thirty wall-clock seconds, including reads.
+// Retain completions for thirty wall-clock seconds after release, including reads.
 // Keep the active token while its lock remains held and never reuse a token.
 // A forward clock jump can expire a receipt early: it becomes unknown and
 // callers fail conservatively rather than accepting a different request.
@@ -43,8 +43,10 @@ function released(ledger, now) {
   var record = ledger.records[ledger.active]
   if (record && record.state === "pending") {
     record.state = "failed"
-    record.finishedAt = now
   }
+  // A caller may join a long-held lock just before authentication releases it.
+  // Give that caller the full archived window without changing the outcome.
+  if (record) record.finishedAt = now
   ledger.active = ""
 }
 
