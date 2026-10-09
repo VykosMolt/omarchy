@@ -522,6 +522,32 @@ if ! rg -qU 'function runProgram\(argv\) \{[^}]*Util\.execProgram\(argv\)' "$ROO
 fi
 pass "bar.runProgram gives widgets the no-shell path"
 
+run_node_test <<'JS'
+const fs = require('fs')
+const facadeSource = fs.readFileSync(root + '/shell/Ui/PluginBarApi.qml', 'utf8')
+const barSource = fs.readFileSync(root + '/shell/plugins/bar/Bar.qml', 'utf8')
+const utilSource = fs.readFileSync(root + '/shell/Commons/Util.qml', 'utf8')
+const facade = facadeSource.match(/function runProgram\(argv\) \{([\s\S]*?)\n  \}/)
+const callback = barSource.match(/_runProgram: function\(argv\) \{([^}]+)\}/)
+const barRun = barSource.match(/function runProgram\(argv\) \{([\s\S]*?)\n  \}/)
+const utilRun = utilSource.match(/function execProgram\(argv\) \{([\s\S]*?)\n  \}/)
+assert(facade && callback && barRun && utilRun, 'cloned bars expose and bind the direct program path')
+const calls = []
+const runUtil = new Function('Quickshell', 'argv', utilRun[1])
+const Util = { execProgram: argv => runUtil({ execDetached: args => calls.push(args) }, argv) }
+const host = { runProgram: argv => new Function('Util', 'argv', barRun[1])(Util, argv) }
+const forward = argv => new Function('root', 'argv', callback[1])(host, argv)
+const invoke = new Function('_runProgram', 'argv', facade[1])
+const argv = ['hyprctl', 'switchxkblayout', 'keyboard; $(touch /tmp/never)', '1']
+invoke(forward, argv)
+assertDeepEqual(calls[0], argv, 'a cloned keyboard reaches Quickshell with literal argv and no login shell')
+assert(calls[0] !== argv, 'cloned widgets cannot mutate the host argv after forwarding')
+invoke(forward, ['hyprctl', {}])
+invoke(forward, [])
+invoke(forward, 'hyprctl reload')
+assertEqual(calls.length, 1, 'the cloned direct path ignores malformed argv')
+JS
+
 if rg -q 'bar\.run\("hyprctl' "$ROOT/shell/plugins/bar/widgets/Workspaces.qml" "$ROOT/shell/plugins/bar/widgets/KeyboardLayout.qml"; then
   fail "hyprctl must not be launched through a login shell from the bar"
 fi

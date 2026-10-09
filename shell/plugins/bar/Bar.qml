@@ -280,6 +280,7 @@ Item {
           ? root.moduleWidgets(moduleName) : []
       },
       _run: function(command) { root.run(command) },
+      _runProgram: function(argv) { root.runProgram(argv) },
       _setCenterHoverRevealSuppressed: function(value) {
         root.centerHoverRevealSuppressed = !!value
       }
