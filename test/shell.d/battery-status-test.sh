@@ -11,6 +11,8 @@ mkdir -p "$tmp_dir/bin"
 mkdir -p "$tmp_dir/power/BAT0"
 printf '900000\n' >"$tmp_dir/power/BAT0/current_now"
 printf '12000000\n' >"$tmp_dir/power/BAT0/voltage_now"
+printf '55\n' >"$tmp_dir/power/BAT0/charge_control_start_threshold"
+printf '80\n' >"$tmp_dir/power/BAT0/charge_control_end_threshold"
 cat >"$tmp_dir/bin/upower" <<'STUB'
 #!/bin/bash
 
@@ -43,6 +45,8 @@ grep -Fx $'state\tdischarging' <<<"$shell_output" >/dev/null || fail "battery st
 grep -Fx $'rate\t10.8W' <<<"$shell_output" >/dev/null || fail "battery status reports live sysfs power rate"
 grep -Fx $'size\t56Wh' <<<"$shell_output" >/dev/null || fail "battery status reports full capacity"
 grep -Fx $'time\t2h 30m' <<<"$shell_output" >/dev/null || fail "battery status reports remaining time"
+grep -Fx $'threshold\t55-80%' <<<"$shell_output" >/dev/null || fail "missing UPower thresholds fall back to both sysfs values"
+pass "missing UPower thresholds fall back to both sysfs values"
 
 if matches=$(rg -n 'omarchy-battery-(capacity|remaining|remaining-time)' "$ROOT/bin" "$ROOT/test" "$ROOT/shell" "$ROOT/docs"); then
   fail "battery status owns capacity and remaining calculations" "$matches"
@@ -101,4 +105,6 @@ threshold_output=$(OMARCHY_POWER_SUPPLY_PATH="$tmp_dir/power" PATH="$tmp_dir/bin
 grep -Fx $'percentage\t88%' <<<"$threshold_output" >/dev/null || fail "battery status still reads percentage past the threshold lines"
 grep -Fx $'time\t45m' <<<"$threshold_output" >/dev/null || fail "battery status still formats a time given in minutes"
 grep -Fx $'state\tcharging' <<<"$threshold_output" >/dev/null || fail "battery status still reads charging state"
+grep -Fx $'threshold\t70-90%' <<<"$threshold_output" >/dev/null || fail "reported UPower thresholds keep their start/end positions and override sysfs"
+pass "reported UPower thresholds keep their start/end positions and override sysfs"
 pass "battery status reads a report carrying charge thresholds"
