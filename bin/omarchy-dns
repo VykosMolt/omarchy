@@ -95,14 +95,14 @@ resolved_dns() {
     file=$RESOLVED_DNS_CONF
   fi
 
-  # An empty DNS= clears the servers before it, so the effective value is the
-  # last non-empty assignment rather than the first one seen.
+  # A final empty DNS= clears reporting too. Our managed drop-in clears the
+  # list before writing its selected servers.
   awk -F= '
     /^[[:space:]]*#/ { next }
     /^[[:space:]]*DNS[[:space:]]*=/ {
       value=$0
       sub(/^[^=]*=/, "", value)
-      if (value ~ /[^[:space:]]/) last = value
+      last = value
     }
     END { if (last != "") print last }
   ' "$file" 2>/dev/null || true

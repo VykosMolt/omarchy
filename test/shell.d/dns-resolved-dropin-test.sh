@@ -88,6 +88,10 @@ if (( EUID == 0 )) || unshare --user --map-root-user true 2>/dev/null; then
     fail "a machine with no drop-in yet still reports from resolved.conf"
   pass "a machine with no drop-in yet still reports from resolved.conf"
 
+  [[ $(probe $'[Resolve]\nDNS=1.1.1.1#cloudflare-dns.com\nDNS=\n' "") == "DHCP" ]] ||
+    fail "a final empty DNS assignment clears provider reporting without a drop-in"
+  pass "a final empty DNS assignment clears provider reporting without a drop-in"
+
   [[ $(probe "$stale_main" $'[Resolve]\nDNS=\nDNS=192.168.1.1\nFallbackDNS=\n') == "Custom" ]] ||
     fail "a drop-in naming servers Omarchy does not ship reports Custom"
   pass "a drop-in naming servers Omarchy does not ship reports Custom"
