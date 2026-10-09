@@ -280,3 +280,14 @@ done
 printf '#!/bin/bash\necho "%s"\n' "'OmaSelected'" >"$tmpdir/bin/gsettings"
 run_scan >"$tmpdir/scan"
 expect_theme printer hicolor "an installed configured theme keeps its existing fallback chain"
+
+ln -s OmaSelected "$icons/OmaLinked"
+printf '#!/bin/bash\necho "%s"\n' "'OmaLinked'" >"$tmpdir/bin/gsettings"
+run_scan >"$tmpdir/scan"
+expect_theme oma-test-selected OmaLinked "a selected linked theme is scanned before inherited icons"
+
+printf '[Icon Theme]\r\nInherits= OmaParentA , OmaParentB \r\n' >"$icons/OmaSelected/index.theme"
+printf '#!/bin/bash\necho "%s"\n' "'OmaSelected'" >"$tmpdir/bin/gsettings"
+run_scan >"$tmpdir/scan"
+expect_theme oma-test-inherited OmaParentA "CRLF inheritance strips surrounding whitespace before lookup"
+expect_theme oma-test-depth OmaGrandparent "a CRLF parent still traverses its own inheritance"
