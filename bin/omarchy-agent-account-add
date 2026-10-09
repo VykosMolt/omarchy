@@ -217,7 +217,6 @@ EOF
       echo "Switch to it with: omarchy agent account use $provider $(jq -r .id <<<"$account")"
     fi
   else
-    home=""
     fail "$account"
   fi
 fi

@@ -13,6 +13,7 @@ trap 'rm -rf "$test_tmp"' EXIT
 mock_bin="$test_tmp/bin"
 notifications="$test_tmp/notifications"
 mkdir -p "$mock_bin" "$test_tmp/home/.claude" "$test_tmp/home/.codex"
+mkdir -p "$test_tmp/runtime"
 
 cat >"$mock_bin/omarchy-notification-send" <<'SH'
 #!/bin/bash
@@ -91,6 +92,7 @@ chmod +x "$mock_bin"/*
 
 export HOME="$test_tmp/home"
 export XDG_STATE_HOME="$test_tmp/state"
+export XDG_RUNTIME_DIR="$test_tmp/runtime"
 export PATH="$mock_bin:$ROOT/bin:$PATH"
 export OMARCHY_PATH="$ROOT"
 export OMARCHY_TEST_NOTIFICATIONS="$notifications"
@@ -319,6 +321,34 @@ import shutil
 shutil.rmtree(pending)
 PY
 pass "a failed registration rolls the new home back to pending"
+
+# Exercise the add command's EXIT trap after the real register rollback.
+cat >"$mock_bin/omarchy-agent-account-state" <<'SH'
+#!/bin/bash
+if [[ $1 != "register" ]]; then
+  exec "$ROOT/bin/omarchy-agent-account-state" "$@"
+fi
+STATE="$ROOT/bin/omarchy-agent-account-state" python3 - "$@" <<'PY'
+import importlib.machinery, importlib.util, os, sys
+loader = importlib.machinery.SourceFileLoader("state", os.environ["STATE"])
+spec = importlib.util.spec_from_loader(loader.name, loader)
+state = importlib.util.module_from_spec(spec)
+loader.exec_module(state)
+def broken_save(provider, registry):
+  raise OSError("fixture registry save failure")
+state.save = broken_save
+raise SystemExit(state.main(sys.argv[1:]))
+PY
+SH
+chmod +x "$mock_bin/omarchy-agent-account-state"
+if OMARCHY_TEST_LOGIN_UUID=u-cli-rollback OMARCHY_TEST_LOGIN_EMAIL=rollback@example.com \
+  omarchy-agent-account-add claude Rollback </dev/null >"$test_tmp/rollback-output" 2>&1; then
+  fail "a failed registry write fails the add command"
+fi
+[[ -z $(find "$accounts/claude/.pending" -mindepth 1 -maxdepth 1 -print) ]] ||
+  fail "the add command removes the rolled-back pending login"
+rm "$mock_bin/omarchy-agent-account-state"
+pass "the add command cleans a failed registration without leaving sign-in files"
 
 # ------------------------------------------------------------ panel add flow
 
