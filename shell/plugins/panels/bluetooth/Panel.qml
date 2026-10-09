@@ -348,37 +348,28 @@ Panel {
   // j/k navigates the hero toggle ("header") and the device sections
   // row-by-row.
   function moveCursor(delta) {
-    var sections = visibleSections
+    // Follow the rendered order: hover pinning can interleave known and
+    // discovered devices after pairing, so section order is not row order.
+    var rows = []
+    for (var i = 0; i < connectedDevices.length; i++)
+      rows.push({ section: "connected", indexInSection: i })
+    rows = rows.concat(scrollRows)
+    if (rows.length === 0) { focusSection = "header"; actionFocused = false; return }
+
+    var next = 0
     if (focusSection === "header") {
-      if (delta > 0 && sections && sections.length > 0) {
-        focusSection = sections[0]; selectedIndex = 0; actionFocused = false
-      }
-      return
-    }
-    if (!sections || sections.length === 0) { focusSection = "header"; actionFocused = false; return }
-    var sIdx = sections.indexOf(focusSection)
-    if (sIdx < 0) { focusSection = sections[0]; selectedIndex = 0; actionFocused = false; return }
-
-    var idx = selectedIndex
-    var max = sectionCount(focusSection) - 1
-
-    if (delta > 0) {
-      if (idx < max) { selectedIndex = idx + 1; actionFocused = false; return }
-      if (sIdx < sections.length - 1) {
-        focusSection = sections[sIdx + 1]
-        selectedIndex = 0
-        actionFocused = false
-      }
+      if (delta <= 0) return
     } else {
-      if (idx > 0) { selectedIndex = idx - 1; actionFocused = false; return }
-      if (sIdx > 0) {
-        focusSection = sections[sIdx - 1]
-        selectedIndex = sectionCount(focusSection) - 1
-        actionFocused = false
-      } else {
-        focusSection = "header"; actionFocused = false
-      }
+      var current = -1
+      for (var j = 0; j < rows.length; j++)
+        if (rows[j].section === focusSection && rows[j].indexInSection === selectedIndex) current = j
+      if (current >= 0) next = current + (delta > 0 ? 1 : -1)
     }
+    if (next < 0) { focusSection = "header"; actionFocused = false; return }
+    if (next >= rows.length) return
+    focusSection = rows[next].section
+    selectedIndex = rows[next].indexInSection
+    actionFocused = false
   }
 
   function setHeaderCursor() {

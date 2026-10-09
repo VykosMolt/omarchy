@@ -174,6 +174,41 @@ assertEqual(pairedRow.section, 'known', 'a pinned paired device uses its current
 assertEqual(bluetooth.deviceLists(paired).known[pairedRow.indexInSection].address, 'p', 'the paired row index still addresses the correct live device')
 assertEqual(pairedRow.displaySection, 'discovered', 'pairing cannot insert a section heading ahead of pinned rows')
 
+const moveCursor = panelSource.match(/function moveCursor\(delta\) \{([\s\S]*?)\n  \}/)
+assert(moveCursor, 'bluetooth exposes cursor movement')
+const navigation = {
+  connectedDevices: [],
+  scrollRows: context.scrollRows,
+  focusSection: pairedRow.section,
+  selectedIndex: pairedRow.indexInSection,
+  actionFocused: true
+}
+function move(delta) {
+  vm.runInNewContext('(function(delta) {' + moveCursor[1] + '})(' + delta + ')', navigation)
+}
+move(1)
+const visibleNext = context.scrollRows[3]
+assertEqual(navigation.focusSection, visibleNext.section, 'Down from a paired pinned row uses the next visible row section')
+assertEqual(navigation.selectedIndex, visibleNext.indexInSection, 'Down from a paired pinned row uses the next visible row index')
+move(-1)
+assertEqual(navigation.focusSection, pairedRow.section, 'Up returns to the paired pinned row')
+assertEqual(navigation.selectedIndex, pairedRow.indexInSection, 'Up preserves the paired row action index')
+
+const pairedScanning = scanning.map(device => device.address === 'p' ? Object.assign({}, device, { paired: true }) : device)
+navigation.scrollRows = bluetooth.scrollRows(bluetooth.deviceLists(pairedScanning), true, ['m', 'p', 's'], { m: 'discovered', p: 'discovered', s: 'discovered' })
+navigation.focusSection = 'header'
+move(1)
+assertEqual(navigation.focusSection, 'discovered', 'Down from the header chooses the first visible row despite a later known device')
+assertEqual(navigation.selectedIndex, 0, 'the header chooses the first visible discovered row index')
+navigation.connectedDevices = [{ address: 'c1' }, { address: 'c2' }]
+navigation.focusSection = 'connected'
+navigation.selectedIndex = 1
+move(1)
+assertEqual(navigation.focusSection, 'discovered', 'Down from connected devices enters the first viewport row')
+move(-1)
+assertEqual(navigation.focusSection, 'connected', 'Up from the first viewport row returns to connected devices')
+assertEqual(navigation.selectedIndex, 1, 'Up returns to the last connected device')
+
 context.opened = false
 setPin()
 assertEqual(context.pinnedOrder.length, 0, 'closing clears a pin even if the hover handler stays hovered')
