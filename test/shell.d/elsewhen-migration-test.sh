@@ -146,6 +146,22 @@ rm "$config"
 mv "$test_dir/shared-shell.json" "$config"
 pass "relative config links and target permissions survive the rename and retries"
 
+for command in chmod mv; do
+  cat >"$test_dir/bin/$command" <<'SH'
+#!/bin/bash
+[[ ${CONFIG_REPLACE_FAILURE:-} != "${0##*/}" ]] || exit 1
+exec "/usr/bin/${0##*/}" "$@"
+SH
+  chmod +x "$test_dir/bin/$command"
+done
+for failure in chmod mv; do
+  cp "$config" "$test_dir/before.json"
+  if run "CONFIG_REPLACE_FAILURE=$failure"; then fail "$failure failure must leave the migration pending"; fi
+  cmp -s "$config" "$test_dir/before.json" || fail "$failure failure preserves the original config"
+  [[ -z $(find "${config%/*}" -name '.shell.json.*' -print) ]] || fail "$failure failure leaves no temporary config"
+done
+pass "permission and replacement failures preserve the original and clean temporary configs"
+
 printf 'not json' >"$config"
 if run; then
   fail "an unreadable config must leave the migration pending"
