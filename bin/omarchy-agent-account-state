@@ -412,6 +412,11 @@ def exec_account(provider: str, command: list[str]) -> None:
       os.environ[home_env] = selected
     else:
       os.environ.pop(home_env, None)
+  # Python ignores these signals itself. Restore the native child convention
+  # used by subprocess(restore_signals=True) before replacing the launcher.
+  for name in ("SIGPIPE", "SIGXFZ", "SIGXFSZ"):
+    if (number := getattr(signal, name, None)) is not None:
+      signal.signal(number, signal.SIG_DFL)
   os.execvpe(command[0], command, os.environ)
 
 

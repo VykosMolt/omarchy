@@ -697,6 +697,21 @@ exec omarchy-agent-account-state exec claude python3 -c 'import os,sys;os.write(
   print("ok - external custom home aliases with dot-dot remain valid through explicit and inherited selection")
 
   reset()
+  for command in (["/usr/bin/yes"], [str(script), "exec", "claude", "/usr/bin/yes"]):
+    native = subprocess.Popen(command, env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    processes.append(native)
+    native.stdout.close()
+    native.wait(timeout=5)
+    assert native.returncode == -signal.SIGPIPE, "dispatch must preserve native broken-pipe termination"
+    assert native.stderr.read() == b"", "native SIGPIPE must not become a printed Broken pipe error"
+    native.stderr.close()
+  claim = state.session_claim("claude", home)
+  import fcntl
+  fcntl.flock(claim, fcntl.LOCK_EX)
+  os.close(claim)
+  print("ok - native closed-reader SIGPIPE termination matches direct exec and releases the claim")
+
+  reset()
   failure = launch(setup_failure=True)
   failure[0].wait(timeout=5)
   assert failure[0].returncode != 0 and barrier_read(failure[1]) == b"", "guardian setup failure never launches the CLI"
