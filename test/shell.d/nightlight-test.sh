@@ -122,4 +122,20 @@ assert(
   'the night light indicator reads the renamed property'
 )
 
+const shellSource = fs.readFileSync(path.join(root, 'shell/shell.qml'), 'utf8')
+const proxySource = fs.readFileSync(path.join(root, 'shell/services/PluginFirstPartyServiceApi.qml'), 'utf8')
+assert(/property bool nightlightOn:/.test(proxySource), 'cloned bars expose the renamed nightlight state')
+const nightBinding = shellSource.match(/api\.nightlightOn = Qt\.binding\(function\(\) \{([\s\S]*?)\n    \}\)/)
+const enabledBinding = shellSource.match(/api\.enabled = Qt\.binding\(function\(\) \{([\s\S]*?)\n    \}\)/)
+assert(nightBinding && enabledBinding, 'first-party proxies bind both nightlight and compatible enabled state')
+const readNight = new Function('service', 'id', nightBinding[1])
+const readEnabled = new Function('service', 'id', enabledBinding[1])
+for (const active of [false, true]) {
+  const target = { nightlightOn: active, enabled: !active }
+  assertEqual(readNight(() => target, 'omarchy.nightlight'), active, 'cloned nightlight state follows the domain state ' + active)
+  assertEqual(readEnabled(() => target, 'omarchy.nightlight'), active, 'legacy cloned enabled follows the nightlight domain state ' + active)
+}
+assertEqual(readEnabled(() => ({ enabled: true }), 'omarchy.idle'), true, 'other first-party services keep their enabled mapping')
+assertEqual(readNight(() => ({ nightlightOn: true }), 'omarchy.idle'), false, 'nightlight state is scoped to the nightlight service')
+
 JS
