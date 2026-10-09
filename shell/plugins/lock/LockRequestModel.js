@@ -1,5 +1,6 @@
 // Receipts belong to one shell instance and remain valid after authentication.
-// Retain completions for thirty wall-clock seconds and never reuse a token.
+// Retain archived completions for thirty wall-clock seconds, including reads.
+// Keep the active token while its lock remains held and never reuse a token.
 // A forward clock jump can expire a receipt early: it becomes unknown and
 // callers fail conservatively rather than accepting a different request.
 function create(instance) {
@@ -8,7 +9,7 @@ function create(instance) {
 
 function request(ledger, now) {
   if (!ledger || !ledger.instance) return null
-  if (ledger.active) return result(ledger, ledger.active)
+  if (ledger.active) return result(ledger, ledger.active, now)
 
   var kept = []
   for (var i = 0; i < ledger.order.length; i++) {
@@ -25,7 +26,7 @@ function request(ledger, now) {
   ledger.active = requestId
   ledger.records[requestId] = { requestId: requestId, state: "pending" }
   ledger.order.push(requestId)
-  return result(ledger, requestId)
+  return result(ledger, requestId, now)
 }
 
 function secured(ledger, now) {
@@ -47,8 +48,14 @@ function released(ledger, now) {
   ledger.active = ""
 }
 
-function result(ledger, requestId) {
+function result(ledger, requestId, now) {
   var record = ledger && Object.prototype.hasOwnProperty.call(ledger.records, requestId) && ledger.records[requestId]
+  if (record && requestId !== ledger.active && record.state !== "pending"
+      && (now === undefined ? Date.now() : now) - record.finishedAt >= 30000) {
+    delete ledger.records[requestId]
+    ledger.order.splice(ledger.order.indexOf(requestId), 1)
+    record = null
+  }
   if (!record) return { requestId: requestId, state: "unknown" }
   return { requestId: record.requestId, state: record.state }
 }

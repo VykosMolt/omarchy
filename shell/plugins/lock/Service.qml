@@ -207,7 +207,7 @@ Item {
 
     // Legacy callers can start after an asynchronous unlock too.
     if (requestLedger && requestLedger.active
-        && LockRequests.result(requestLedger, requestLedger.active).state === "secured")
+        && LockRequests.result(requestLedger, requestLedger.active, Date.now()).state === "secured")
       LockRequests.released(requestLedger, Date.now())
     resetAuthenticationState()
     LockRequests.request(requestLedger, Date.now())
@@ -875,11 +875,11 @@ Item {
       if (!receipt) return JSON.stringify({ reason: "receipt-unavailable" })
       if (sessionLock.secure) LockRequests.secured(root.requestLedger, Date.now())
       if (!root.locked && !root.beginLock()) LockRequests.released(root.requestLedger, Date.now())
-      return JSON.stringify(LockRequests.result(root.requestLedger, receipt.requestId))
+      return JSON.stringify(LockRequests.result(root.requestLedger, receipt.requestId, Date.now()))
     }
 
     function result(requestId: string): string {
-      return JSON.stringify(LockRequests.result(root.requestLedger, requestId))
+      return JSON.stringify(LockRequests.result(root.requestLedger, requestId, Date.now()))
     }
 
     function status(): string {
