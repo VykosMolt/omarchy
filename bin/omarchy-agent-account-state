@@ -619,12 +619,13 @@ def decide(registry: dict[str, Any], usage: dict[str, Any], now: dt.datetime, st
 
 # Limits per account id. An account nobody is signed in to is left out, so it
 # is never a candidate: its cached headroom is no use to a session that can't
-# start. One whose token merely expired stays in, since a session refreshes it.
+# start. A collector's expired sign-in needs user authentication, while a
+# temporarily paused limits check can still have a refreshable login.
 def usage_by_account(provider: str) -> tuple[dict[str, Any], frozenset[str]]:
   record = read_json(usage_record_path(provider)) or {}
   accounts = [
     a for a in record.get("accounts") or []
-    if isinstance(a, dict) and a.get("id") and a.get("usageStatusText") != "Waiting for auth"
+    if isinstance(a, dict) and a.get("id") and a.get("usageStatusText") not in ("Waiting for auth", "Sign-in expired")
   ]
   return (
     {str(a["id"]): a.get("limits") for a in accounts},
