@@ -236,7 +236,9 @@ function isDuplicatePopup(row, snapshot) {
   if (!row || !snapshot || row.originalId === snapshot.originalId) return false
   for (var i = 0; i < DUPLICATE_ROLES.length; i++) {
     var role = DUPLICATE_ROLES[i]
-    if ((row[role] || "") !== (snapshot[role] || "")) return false
+    if (role === "urgency" || role === "expireTimeout") {
+      if (row[role] !== snapshot[role]) return false
+    } else if ((row[role] || "") !== (snapshot[role] || "")) return false
   }
   return true
 }

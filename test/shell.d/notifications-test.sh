@@ -391,6 +391,16 @@ assert(
   'matching critical alerts with the same lifetime still collapse'
 )
 assert(
+  !notifications.isDuplicatePopup(heyReminder, Object.assign({}, heyReminder, { originalId: 21, urgency: 0 })),
+  'an explicit low urgency is distinct from unspecified urgency'
+)
+assert(
+  notifications.isDuplicatePopup(
+    notifications.snapshotOf({ id: 40, appName: 'Slack', summary: 'Reminder', urgency: 1 }),
+    notifications.snapshotOf({ id: 41, appName: 'Slack', summary: 'Reminder', urgency: 1, expireTimeout: 0 })),
+  'default and zero timeouts collapse after the normal snapshot normalization'
+)
+assert(
   !notifications.isDuplicatePopup(
     { originalId: 30, app: 'omarchy-action', summary: 'Screen recording saved', body: '', image: '/tmp/a.png', execArgv: '["mpv","--","/tmp/a.mp4"]' },
     { originalId: 31, app: 'omarchy-action', summary: 'Screen recording saved', body: '', image: '/tmp/b.png', execArgv: '["mpv","--","/tmp/b.mp4"]' }),
