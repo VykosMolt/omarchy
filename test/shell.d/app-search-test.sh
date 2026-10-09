@@ -287,7 +287,11 @@ run_scan >"$tmpdir/scan"
 expect_theme oma-test-selected OmaLinked "a selected linked theme is scanned before inherited icons"
 
 printf '[Icon Theme]\r\nInherits= OmaParentA , OmaParentB \r\n' >"$icons/OmaSelected/index.theme"
+touch "$icons/OmaParentB/scalable/apps/oma-test-crlf-parent.svg" "$icons/hicolor/scalable/apps/oma-test-crlf-parent.svg"
+last_parent=$(sed -n 's/^Inherits=//p' "$icons/OmaSelected/index.theme" | tr ',' '\n' | tail -1)
+[[ $last_parent == *$'\r' ]] || fail "the final inherited-name fixture carries a real carriage return"
 printf '#!/bin/bash\necho "%s"\n' "'OmaSelected'" >"$tmpdir/bin/gsettings"
 run_scan >"$tmpdir/scan"
 expect_theme oma-test-inherited OmaParentA "CRLF inheritance strips surrounding whitespace before lookup"
 expect_theme oma-test-depth OmaGrandparent "a CRLF parent still traverses its own inheritance"
+expect_theme oma-test-crlf-parent OmaParentB "the parent carrying the final carriage return wins before hicolor"
