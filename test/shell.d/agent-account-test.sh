@@ -495,7 +495,7 @@ def barrier_read(descriptor):
   assert select.select([descriptor], [], [], 5)[0], "session barrier timed out"
   return os.read(descriptor, 4096)
 
-def launch(paused=False, terminal=False, setup_failure=False):
+def launch(paused=False, terminal=False, setup_failure=False, closed_stdio=False):
   ready_read, ready_write = os.pipe()
   release_read, release_write = os.pipe()
   selected_read, selected_write = os.pipe()
@@ -507,10 +507,16 @@ signal.signal(signal.SIGHUP, lambda *_: sys.exit(75))
 os.write(int(sys.argv[1]), (str(os.getpid()) + ":" + str(all(os.isatty(fd) for fd in (0,1,2)))).encode())
 os.read(int(sys.argv[2]), 1)
 '''
+  if closed_stdio:
+    # Re-exec without the provider env so /proc cannot conceal a lost claim.
+    # The same PID must remain protected through both real exec transitions.
+    program = "import os,sys; environment=dict(os.environ); environment.pop('CLAUDE_CONFIG_DIR',None); environment.pop('OMARCHY_AGENT_CLAUDE_HOME',None); os.execve(sys.executable,[sys.executable,'-c'," + repr(program) + ",sys.argv[1],sys.argv[2]],environment)"
   launcher = '''import importlib.machinery,importlib.util,os,sys
 loader=importlib.machinery.SourceFileLoader("state",sys.argv[1])
 spec=importlib.util.spec_from_loader(loader.name,loader)
 state=importlib.util.module_from_spec(spec);loader.exec_module(state)
+if sys.argv[2] == "closed":
+  for descriptor in (0,1,2): os.close(descriptor)
 if sys.argv[2] == "failure":
   def fail(): raise OSError("injected guardian setup failure")
   state.os.setsid=fail
@@ -523,7 +529,7 @@ elif sys.argv[2] == "paused":
   state.guard_session=guard
 state.exec_account("claude",sys.argv[5:])
 '''
-  arguments = [sys.executable, "-c", launcher, str(script), "failure" if setup_failure else "paused" if paused else "normal", str(selected_write), str(proceed_read), sys.executable, "-c", program, str(ready_write), str(release_read)]
+  arguments = [sys.executable, "-c", launcher, str(script), "failure" if setup_failure else "paused" if paused else "closed" if closed_stdio else "normal", str(selected_write), str(proceed_read), sys.executable, "-c", program, str(ready_write), str(release_read)]
   master, slave = pty.openpty() if terminal else (None, None)
   process = subprocess.Popen(arguments, env=environment, pass_fds=(ready_write, release_read, selected_write, proceed_read), stdin=slave or subprocess.DEVNULL, stdout=slave or subprocess.PIPE, stderr=slave or subprocess.PIPE)
   processes.append(process)
@@ -667,6 +673,28 @@ exec omarchy-agent-account-state exec claude python3 -c 'import os,sys;os.write(
   for descriptor in interrupted[1:5]: os.close(descriptor)
   assert run("remove", "claude", "side").returncode == 0
   print("ok - interruption before guardian startup releases the claim without launching the CLI")
+
+  reset()
+  closed = launch(closed_stdio=True)
+  assert barrier_read(closed[1]) == f"{closed[0].pid}:False".encode()
+  assert not state.home_in_use("claude", home), "legacy environment scanning must not mask the closed-stdio regression"
+  try:
+    state.session_claim("claude", home, exclusive=True)
+    raise AssertionError("closed stdio must not overwrite the guardian's claim or pidfd")
+  except BlockingIOError:
+    pass
+  assert run("remove", "claude", "side").returncode == 1 and home.is_dir()
+  finish(closed)
+  assert run("remove", "claude", "side").returncode == 0
+  print("ok - closed stdio preserves the guardian claim across same-PID exec without legacy environment protection")
+
+  external_alias = state.accounts_root() / "../custom"
+  external_alias.resolve().mkdir(mode=0o700)
+  for variable in ("CLAUDE_CONFIG_DIR", "OMARCHY_AGENT_CLAUDE_HOME"):
+    custom_env = dict(environment, **{variable: str(external_alias)})
+    result = subprocess.run([str(script), "exec", "claude", sys.executable, "-c", "import os; print(os.environ['CLAUDE_CONFIG_DIR']); print(os.environ['OMARCHY_AGENT_CLAUDE_HOME'])"], env=custom_env, capture_output=True, text=True, timeout=5)
+    assert result.returncode == 0 and result.stdout.splitlines() == [str(external_alias), str(external_alias)], "legitimate external .. aliases retain explicit and inherited home semantics"
+  print("ok - external custom home aliases with dot-dot remain valid through explicit and inherited selection")
 
   reset()
   failure = launch(setup_failure=True)

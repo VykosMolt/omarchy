@@ -325,6 +325,20 @@ def guard_session(claim: int) -> None:
     if guardian == 0:
       try:
         os.setsid()
+        # Callers may have closed stdio before dispatch. The lock or pidfd can
+        # then occupy 0/1/2; protect them before redirecting those descriptors.
+        if claim < 3:
+          replacement = fcntl.fcntl(claim, fcntl.F_DUPFD_CLOEXEC, 3)
+          os.close(claim)
+          claim = replacement
+        if lifetime < 3:
+          replacement = fcntl.fcntl(lifetime, fcntl.F_DUPFD_CLOEXEC, 3)
+          os.close(lifetime)
+          lifetime = replacement
+        if ready_write < 3:
+          replacement = fcntl.fcntl(ready_write, fcntl.F_DUPFD_CLOEXEC, 3)
+          os.close(ready_write)
+          ready_write = replacement
         # In particular, don't retain the registry lock or the terminal's
         # stdout pipes. The guardian needs only the claim, pidfd and handshake.
         keep = {claim, lifetime, ready_write}
@@ -381,7 +395,7 @@ def exec_account(provider: str, command: list[str]) -> None:
     os.environ[pin] = selected
     if selected:
       home = Path(selected)
-      managed = home.absolute().is_relative_to(accounts_root().absolute()) or home.resolve().is_relative_to(accounts_root().resolve())
+      managed = Path(os.path.abspath(home)).is_relative_to(Path(os.path.abspath(accounts_root()))) or home.resolve().is_relative_to(accounts_root().resolve())
       registered = any(not account.get("primary") and account_home(provider, account).resolve() == home.resolve() for account in registry["accounts"])
       # Adding an account signs in to a freshly created private pending home;
       # removed account homes elsewhere in the store must never be recreated.
