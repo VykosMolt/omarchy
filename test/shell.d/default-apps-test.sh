@@ -341,13 +341,13 @@ pass "every packaged browser id still reads as its own name"
 : >"$browser_call_log"
 printf 'unmatched.desktop\n' >"$browser_file"
 omarchy-default-browser >/dev/null
-[[ $(wc -l <"$browser_call_log") -eq 1 ]] || fail "an unmatched browser id is read with a single xdg-settings call"
+(( $(wc -l <"$browser_call_log") == 1 )) || fail "an unmatched browser id is read with a single xdg-settings call"
 pass "reading an unmatched browser id asks xdg-settings once"
 
 : >"$browser_call_log"
 printf 'firefox.desktop\n' >"$browser_file"
 omarchy-default-browser >/dev/null
-[[ $(wc -l <"$browser_call_log") -eq 1 ]] || fail "a packaged browser id is read with a single xdg-settings call"
+(( $(wc -l <"$browser_call_log") == 1 )) || fail "a packaged browser id is read with a single xdg-settings call"
 pass "reading a packaged browser id asks xdg-settings once"
 
 # A browser that registers itself gets a generated entry whose filename names no
@@ -364,7 +364,7 @@ pass "a browser registered under a generated desktop id is recognised"
 
 : >"$browser_call_log"
 omarchy-default-browser >/dev/null
-[[ $(wc -l <"$browser_call_log") -eq 1 ]] || fail "a generated id is resolved without a second xdg-settings call"
+(( $(wc -l <"$browser_call_log") == 1 )) || fail "a generated id is resolved without a second xdg-settings call"
 pass "resolving a generated id still asks xdg-settings once"
 
 mkdir -p "$test_tmp/system share/applications"
