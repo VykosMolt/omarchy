@@ -159,7 +159,7 @@ Item {
       '  seen[$name]=1; order+=("$name");',
       '  for base in "${dirs[@]}"; do',
       '    [[ -f $base/$name/index.theme ]] || continue;',
-      '    while IFS= read -r parent; do visit "$parent"; done < <(sed -n "s/^Inherits=//p" "$base/$name/index.theme" | head -1 | tr "," "\\n");',
+      '    while IFS= read -r parent || [[ -n $parent ]]; do visit "$parent"; done < <(sed -n "s/^Inherits=//p" "$base/$name/index.theme" | head -1 | tr "," "\\n");',
       '    break;',
       '  done;',
       '};',

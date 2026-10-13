@@ -295,3 +295,9 @@ run_scan >"$tmpdir/scan"
 expect_theme oma-test-inherited OmaParentA "CRLF inheritance strips surrounding whitespace before lookup"
 expect_theme oma-test-depth OmaGrandparent "a CRLF parent still traverses its own inheritance"
 expect_theme oma-test-crlf-parent OmaParentB "the parent carrying the final carriage return wins before hicolor"
+
+# An index.theme whose last line is Inherits= with no newline still lists its
+# final parent.
+printf '[Icon Theme]\nInherits=OmaParentA,OmaParentB' >"$icons/OmaSelected/index.theme"
+run_scan >"$tmpdir/scan"
+expect_theme oma-test-crlf-parent OmaParentB "the final parent is visited when Inherits= ends the file without a newline"
