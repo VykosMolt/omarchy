@@ -62,9 +62,9 @@ QtObject {
   // both go through `bash -lc`, a login shell that sources /etc/profile and every
   // script in /etc/profile.d before the program starts. That buys the session env
   // a GUI target needs, and it is pure overhead for a tool like hyprctl that needs
-  // nothing from the profile and is already on PATH. Use this only for a fixed
-  // argv naming a system tool; anything a user could influence still wants the
-  // quoting rules execArgv documents.
+  // nothing from the profile and is already on PATH. Arguments stay literal,
+  // including user-provided values. Commands that need the login environment
+  // use execArgv instead.
   function execProgram(argv) {
     Quickshell.execDetached(argv)
   }
@@ -119,6 +119,20 @@ QtObject {
   // True only when the event would actually change the text, so an empty
   // filter never swallows the key — panels keep their own empty-filter
   // fallbacks (e.g. menu back-navigation) in later branches.
+  // The arrow a horizontal key press means along the reading direction: in a
+  // right-to-left layout, mirrored, Left moves forward and Right back. With
+  // vim set, h and l count as Left and Right too.
+  function readingKey(event, vim) {
+    var key = event.key
+    if (vim && (key === Qt.Key_H || event.text === "h")) key = Qt.Key_Left
+    else if (vim && (key === Qt.Key_L || event.text === "l")) key = Qt.Key_Right
+    if (I18n.rightToLeft) {
+      if (key === Qt.Key_Left) return Qt.Key_Right
+      if (key === Qt.Key_Right) return Qt.Key_Left
+    }
+    return key
+  }
+
   function editsFilter(event, text) {
     if (!text) return false
     // Alt/Meta-modified sequences belong to other shortcuts — never edit here.
@@ -164,7 +178,8 @@ QtObject {
     return {
       left:   normalizeLayoutSection(src.left),
       center: normalizeLayoutSection(src.center),
-      right:  normalizeLayoutSection(src.right)
+      right:  normalizeLayoutSection(src.right),
+      tray: normalizeLayoutSection(src.tray)
     }
   }
 }
