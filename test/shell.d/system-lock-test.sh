@@ -11,6 +11,14 @@ const fs = require('fs')
 const vm = require('vm')
 const receipts = requireFromRoot('shell/plugins/lock/LockRequestModel.js')
 const source = fs.readFileSync(root + '/shell/plugins/lock/Service.qml', 'utf8')
+const currentLockState = source.match(/function currentlyLocked\(\) \{([\s\S]*?)\n  \}/)
+assert(currentLockState, 'the lock service exposes its live state decision')
+function bindCurrentLockState(context) {
+  context.root = context
+  context.currentlyLocked = function() {
+    return vm.runInNewContext('(function() {' + currentLockState[1] + '})()', context)
+  }
+}
 const ledger = receipts.create('instance-a')
 const first = receipts.request(ledger, 0)
 assertEqual(first.state, 'pending', 'a tracked request starts pending')
@@ -76,7 +84,7 @@ const context = {
   pendingSessionLockTimer: { stop() {} },
   idleBlankTimer: { stop() {} }
 }
-context.root = context
+bindCurrentLockState(context)
 const qmlRequest = receipts.request(context.requestLedger, 0)
 context.startFingerprint = function() {
   assertEqual(receipts.result(context.requestLedger, qmlRequest.requestId).state, 'secured', 'the QML secure handler records the outcome before fingerprint authentication starts')
@@ -106,9 +114,10 @@ for (const lastFlag of ['secure', 'locked']) {
     runWake() {},
     sessionLockStabilizeTimer: { stop() {} },
     pendingSessionLockTimer: { stop() {} },
+    noteSleepRequested() {},
     beginLock() { this.lockRequested = true; return true }
   }
-  duringUnlock.root = duringUnlock
+  bindCurrentLockState(duringUnlock)
   Object.defineProperty(duringUnlock, 'locked', {
     get() { return this.lockRequested || this.sessionLock.locked || this.sessionLock.secure }
   })
@@ -130,6 +139,39 @@ for (const lastFlag of ['secure', 'locked']) {
   assertEqual(afterUnlock.state, 'pending', 'a new call after ' + lastFlag + ' release cannot inherit an old secure outcome')
 }
 
+// A missed change notification can leave the display binding stale in either
+// direction. Exercise the shipped request and live-state functions together.
+for (const actuallyLocked of [false, true]) {
+  const stale = {
+    LockRequests: receipts,
+    requestLedger: receipts.create('stale-' + actuallyLocked),
+    passwordPamConfigured: true,
+    locked: !actuallyLocked,
+    lockRequested: actuallyLocked,
+    sessionLock: { locked: actuallyLocked, secure: actuallyLocked },
+    beginCalls: 0,
+    sleepNotes: 0,
+    noteSleepRequested() { this.sleepNotes++ },
+    beginLock() { this.beginCalls++; this.lockRequested = true; return true }
+  }
+  bindCurrentLockState(stale)
+  const earlier = receipts.request(stale.requestLedger, Date.now())
+  receipts.secured(stale.requestLedger, Date.now())
+  const reply = JSON.parse(vm.runInNewContext('(function() {' + trackedRequest[1] + '})()', stale))
+  if (actuallyLocked) {
+    assertEqual(reply.requestId, earlier.requestId, 'a stale unlocked binding cannot replace the held lock receipt')
+    assertEqual(reply.state, 'secured', 'a held secure lock keeps its immutable successful outcome')
+    assertEqual(stale.beginCalls, 0, 'a stale unlocked binding cannot begin another lock')
+    assertEqual(stale.sleepNotes, 1, 'a tracked already-locked request preserves the legacy sleep note exactly once')
+  } else {
+    assert(reply.requestId !== earlier.requestId, 'a stale locked binding cannot reuse an old successful outcome')
+    assertEqual(reply.state, 'pending', 'a request after actual unlock starts with a fresh pending outcome')
+    assertEqual(stale.beginCalls, 1, 'a stale locked binding cannot suppress a new lock')
+    assertEqual(stale.sleepNotes, 0, 'a fresh lock does not report an already-locked sleep request')
+    assertEqual(receipts.result(stale.requestLedger, earlier.requestId).state, 'secured', 'releasing a stale active token preserves its archived outcome')
+  }
+}
+
 const jumped = receipts.create('clock-jump')
 const beforeJump = receipts.request(jumped, 0)
 receipts.secured(jumped, 1)
@@ -140,7 +182,8 @@ assertEqual(afterJump.state, 'pending', 'a clock jump never turns an old success
 
 const legacy = source.match(/function lock\(\): string \{([\s\S]*?)\n    \}/)
 assert(legacy, 'legacy lock IPC remains available')
-const legacyRoot = { passwordPamConfigured: true, locked: false, beginLock() { this.locked = true; return true } }
+const legacyRoot = { passwordPamConfigured: true, lockRequested: false, sessionLock: { locked: false, secure: false }, noteSleepRequested() {}, beginLock() { this.lockRequested = true; return true } }
+bindCurrentLockState(legacyRoot)
 assertEqual(vm.runInNewContext('(function() {' + legacy[1] + '})()', { root: legacyRoot }), 'ok', 'legacy lock IPC retains its ok reply')
 legacyRoot.passwordPamConfigured = false
 assertEqual(vm.runInNewContext('(function() {' + legacy[1] + '})()', { root: legacyRoot }), 'missing-pam', 'legacy lock IPC retains its refusal reply')
