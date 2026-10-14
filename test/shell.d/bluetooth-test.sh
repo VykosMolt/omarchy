@@ -149,14 +149,22 @@ const context = {
   pinnedOrder: [],
   pinnedSections: {}
 }
-context.capturePinnedRows = function() { vm.runInNewContext(capture[1], context) }
+context.capturePinnedRows = function() { vm.runInNewContext('(function() {' + capture[1] + '})()', context) }
+const pendingCaptures = new Set()
+context.Qt = { callLater(callback) { pendingCaptures.add(callback) } }
+function flushCaptures() {
+  const captures = Array.from(pendingCaptures)
+  pendingCaptures.clear()
+  captures.forEach(callback => callback())
+}
 function setPin() {
   context.rowOrderPinned = vm.runInNewContext(pinBinding[1], context)
   vm.runInNewContext(pinHandler[1], context)
 }
-function updateRows(devices) {
+function updateRows(devices, settle = true) {
   context.scrollRows = bluetooth.scrollRows(bluetooth.deviceLists(devices), true, context.pinnedOrder, context.pinnedSections)
   vm.runInNewContext(scrollRowsHandler[1], context)
+  if (settle) flushCaptures()
 }
 const rowAddresses = rows => rows.map(row => row.dev.address)
 const mixed = [{ name: 'Keyboard', address: 'k', paired: true }].concat(scanning)
@@ -227,6 +235,30 @@ setPin()
 updateRows([{ name: 'Zeiss', address: 'z' }])
 updateRows([{ name: 'Zeiss', address: 'z' }, { name: 'Anker', address: 'a' }])
 assertDeepEqual(rowAddresses(context.scrollRows), ['z', 'a'], 'hovering an empty list pins its first arrival before later discoveries')
+
+const delayedArrival = [{ name: 'Zeiss', address: 'z' }, { name: 'Anker', address: 'a' }, { name: 'Bose', address: 'b' }]
+updateRows(delayedArrival, false)
+assertDeepEqual(Array.from(context.pinnedOrder), ['z', 'a'], 'a row change does not write its binding inputs during notification')
+assertEqual(pendingCaptures.size, 1, 'a row change queues the next capture')
+updateRows(delayedArrival, false)
+assertEqual(pendingCaptures.size, 1, 'repeated row notifications coalesce their capture')
+context.deviceListHover.hovered = false
+setPin()
+flushCaptures()
+assertEqual(context.pinnedOrder.length, 0, 'a deferred capture cannot restore the pin after hover release')
+assertDeepEqual(context.pinnedSections, {}, 'a deferred capture cannot restore section headings after hover release')
+
+context.deviceListHover.hovered = true
+setPin()
+updateRows(delayedArrival.concat([{ name: 'Apple', address: 'apple' }]), false)
+context.opened = false
+setPin()
+flushCaptures()
+assertEqual(context.pinnedOrder.length, 0, 'a deferred capture cannot restore the pin after panel close')
+assertDeepEqual(context.pinnedSections, {}, 'a deferred capture cannot restore section headings after panel close')
+context.opened = true
+setPin()
+assert(context.pinnedOrder.length > 0, 'a close during deferred capture still permits retained-hover reopen')
 
 context.deviceListHover.hovered = false
 setPin()

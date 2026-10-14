@@ -69,6 +69,8 @@ Panel {
   }
 
   function capturePinnedRows() {
+    // A deferred capture may run after the pointer leaves or the panel closes.
+    if (!rowOrderPinned) return
     var order = scrollRows.map(function(row) { return row.dev.address })
     var sections = ({})
     for (var i = 0; i < scrollRows.length; i++)
@@ -169,7 +171,8 @@ Panel {
   // A device found while the pointer rests on the list joins the pin, so the
   // next arrival cannot sort in above it once the pointer has moved onto it.
   onScrollRowsChanged: {
-    if (rowOrderPinned) capturePinnedRows()
+    // Let the rows binding finish before writing the pin that feeds it.
+    if (rowOrderPinned) Qt.callLater(capturePinnedRows)
   }
 
   // Connected devices render above the scroll area; same primitives-only
