@@ -413,3 +413,10 @@ pass "unset XDG_DATA_DIRS keeps the standard system application directories"
 printf 'something-else.desktop\n' >"$browser_file"
 [[ $(omarchy-default-browser) == "something-else.desktop" ]] || fail "an unrecognised id still reports itself"
 pass "an unrecognised desktop id still reports the raw value"
+
+# With no default set the resolver gets an empty id, which names the applications
+# directory itself rather than an entry in it.
+rm -f "$browser_file"
+[[ -z $(omarchy-default-browser 2>"$test_tmp/no-browser-stderr") && ! -s $test_tmp/no-browser-stderr ]] ||
+  fail "no default browser reads as nothing, without errors" "$(cat "$test_tmp/no-browser-stderr")"
+pass "no default browser reads as nothing"

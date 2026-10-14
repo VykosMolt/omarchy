@@ -108,7 +108,7 @@ browser_from_desktop_id() {
   IFS=: read -ra data_dirs <<<"${XDG_DATA_HOME:-$HOME/.local/share}:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
   for dir in "${data_dirs[@]}"; do
     entry="$dir/applications/$1"
-    [[ -r $entry ]] || continue
+    [[ -f $entry && -r $entry ]] || continue
     exec_line=$(sed -n 's/^Exec=//p' "$entry" | head -n 1)
     [[ -n $exec_line ]] || continue
     browser_from_exec_line "$exec_line"
