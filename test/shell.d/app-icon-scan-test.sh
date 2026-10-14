@@ -41,11 +41,16 @@ fs.writeFileSync(path.join(home, '.icons/theme/index.theme'), '[Icon Theme]\nInh
 // Redirect the fixed pixmaps path into the fixture; traverse real icon trees.
 const stubDir = path.join(scratch, 'bin')
 const calls = path.join(scratch, 'find-calls')
+const starts = path.join(scratch, 'find-starts')
 fs.mkdirSync(stubDir)
 fs.writeFileSync(path.join(stubDir, 'find'), `#!/bin/bash
 options=()
 if [[ $1 == "-L" || $1 == "-H" ]]; then options+=("$1"); shift; fi
 printf '%s\\n' "$1" >> "$FIND_CALLS"
+for arg in "$@"; do
+  case $arg in "(" | "!" | -*) break ;; esac
+  printf '%s\\n' "$arg" >> "$FIND_STARTS"
+done
 if [[ $1 == "/usr/share/pixmaps" ]]; then
   shift
   /usr/bin/find "\${options[@]}" "$PIXMAPS" "$@"
@@ -61,7 +66,7 @@ const body = qml.split('  function iconIndexScanCommand() {')[1].split('\n  func
 const command = new Function(body)()
 const result = spawnSync('bash', ['-c', command], {
   encoding: 'utf8',
-  env: { ...process.env, HOME: home, XDG_DATA_DIRS: `${local}:${system}`, PATH: `${stubDir}:${process.env.PATH}`, FIND_CALLS: calls, PIXMAPS: pixmaps }
+  env: { ...process.env, HOME: home, XDG_DATA_HOME: path.join(home, '.local/share'), XDG_DATA_DIRS: `${local}:${system}`, PATH: `${stubDir}:${process.env.PATH}`, FIND_CALLS: calls, FIND_STARTS: starts, PIXMAPS: pixmaps }
 })
 assertEqual(result.status, 0, 'icon scan completes')
 const lines = result.stdout.trim().split('\n')
@@ -81,5 +86,7 @@ assert(lines.includes(path.join(system, 'icons/theme/apps/name with spaces.png')
 const roots = fs.readFileSync(calls, 'utf8').trim().split('\n')
 assertEqual(new Set(roots).size, 5, 'scan visits all icon roots and pixmaps')
 assertEqual(roots.length, 5, 'scan visits each root only once')
-assert(roots.every(value => value === '/usr/share/pixmaps' || path.basename(value) === 'theme'), 'scan starts at the selected themes rather than walking every theme in a root')
+const startPoints = fs.readFileSync(starts, 'utf8').trim().split('\n')
+assert(startPoints.every(value => value === '/usr/share/pixmaps' || ['theme', 'parent'].includes(path.basename(value))), 'scan starts at the themes it searches rather than walking every theme in a root')
+assert(startPoints.includes(path.join(system, 'icons/parent')), 'scan starts at inherited themes as well as the selected one')
 JS
