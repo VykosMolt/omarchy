@@ -81,11 +81,26 @@ Item {
     var id = String(desktopId || "")
     if (!id) return
     root.beginLaunchFeedback(name)
+    // A terminal app goes through Omarchy's TUI launcher, which names its
+    // terminal window after the command (org.omarchy.nvim), so the dock and
+    // titlebars can tell Neovim from the terminal it runs in.
+    var command = root.terminalCommand(DesktopEntries.byId(id))
+    if (command.length > 0) {
+      Util.execDetached("omarchy-launch-tui " + command.map(function(word) { return Util.shellQuote(word) }).join(" "))
+      return
+    }
     // Start gtk-launch inside a scope under app-graphical.slice so apps do not
     // inherit wayland-wm@.service. Keeping gtk-launch as the desktop-entry
     // resolver supports IDs with spaces and entries that UWSM rejects.
     // Keep the .desktop suffix or ids like org.telegram.desktop won't resolve.
     Util.execDetached("uwsm-app -- gtk-launch " + Util.shellQuote(id + ".desktop"))
+  }
+
+  // The command a terminal entry runs, without the field codes it leaves for a
+  // launcher to fill in; empty for an entry that is not run in a terminal.
+  function terminalCommand(entry) {
+    if (!entry || !entry.runInTerminal) return []
+    return (entry.command || []).filter(function(word) { return !/^%[a-zA-Z]$/.test(String(word)) })
   }
 
   function remove(desktopId, name) {
@@ -139,10 +154,11 @@ Item {
     // (Tela-circle-dark: "Inherits=hicolor,Adwaita,breeze").
     //
     // A theme is exhausted before the next is consulted, SVGs first and then
-    // PNGs within it, so a scalable icon further down the search order cannot
-    // outrank the configured theme's raster one. Each pass is reverse-sorted so
-    // "scalable" beats the numeric size directories; symbolic icons are dropped
-    // because that order would otherwise prefer a monochrome glyph.
+    // PNGs across all its base directories, so a scalable icon further down the
+    // theme order cannot outrank the configured theme's raster one. Scan each
+    // root once, then group the cached paths by theme, format and base order.
+    // Reverse path order prefers scalable directories; symbolic icons are dropped
+    // so the index cannot prefer a monochrome glyph.
     return [
       'theme=$(gsettings get org.gnome.desktop.interface icon-theme 2>/dev/null | tr -d "\'");',
       ': "${theme:=hicolor}";',
@@ -164,15 +180,18 @@ Item {
       '  done;',
       '};',
       'visit "$theme"; order+=(hicolor);',
-      'for name in "${order[@]}"; do',
+      'export ICON_ORDER=$(printf "%s\\n" "${order[@]}");',
+      '{',
+      '  base_index=0;',
       '  for base in "${dirs[@]}"; do',
-      '    [[ -d $base/$name ]] || continue;',
-      '    for ext in svg png; do',
-      '      find -H "$base/$name" \\( -path "*/apps/*" -o -path "*/devices/*" \\) ! -path "*/symbolic/*" -name "*.$ext" 2>/dev/null | sort -r;',
-      '    done;',
+      '    if [[ -d $base ]]; then',
+      '      find -L "$base" \\( -path "*/apps/*" -o -path "*/devices/*" \\) ! -path "*/symbolic/*" \\( -name "*.svg" -o -name "*.png" \\) 2>/dev/null |',
+      '        ICON_BASE="$base" ICON_BASE_INDEX="$base_index" awk \'BEGIN { n = split(ENVIRON["ICON_ORDER"], themes, "\\n"); for (i = 1; i <= n; i++) rank[themes[i]] = i } { relative = substr($0, length(ENVIRON["ICON_BASE"]) + 2); split(relative, parts, "/"); if (parts[1] in rank) printf "%d\\t%d\\t%d\\t%s\\n", rank[parts[1]], /\\.svg$/ ? 0 : 1, ENVIRON["ICON_BASE_INDEX"], $0 }\';',
+      '    fi;',
+      '    ((base_index += 1));',
       '  done;',
-      'done;',
-      'for ext in svg png; do find /usr/share/pixmaps -maxdepth 1 -name "*.$ext" 2>/dev/null | sort -r; done'
+      '  find /usr/share/pixmaps -maxdepth 1 \\( -name "*.svg" -o -name "*.png" \\) 2>/dev/null | awk \'{ printf "999999\\t%d\\t0\\t%s\\n", /\\.svg$/ ? 0 : 1, $0 }\';',
+      '} | sort -t $\'\\t\' -k1,1n -k2,2n -k3,3n -k4,4r | cut -f4-'
     ].join(' ')
   }
 
@@ -201,7 +220,7 @@ Item {
     root.launchSerial++
     root.launchToplevelCount = root.toplevelCount()
     root.launchActiveToplevel = ToplevelManager.activeToplevel
-    root.launchOsdMessage = "Launching " + String(name || "application") + "…"
+    root.launchOsdMessage = name ? I18n.t("appLibrary.launching").arg(String(name)) : I18n.t("appLibrary.launchingApp")
     launchDelay.restart()
     launchTimeout.restart()
   }
