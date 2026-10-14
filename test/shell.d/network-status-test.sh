@@ -39,17 +39,8 @@ export PATH="$tmp/bin:$ROOT/bin:$PATH"
 export NS_CALL_LOG="$call_log"
 export NS_NM_STATE="100 (connected)"
 export NS_SSID="Example"
-
-# The command reads /sys/class/net directly, so the wireless branch can only be
-# exercised with a wireless interface this machine actually has. Find one rather
-# than assume a name, and skip the branch on a machine with no wifi.
-wireless_device=""
-for candidate in /sys/class/net/*/wireless; do
-  [[ -d $candidate ]] || continue
-  candidate=${candidate%/wireless}
-  wireless_device=${candidate##*/}
-  break
-done
+export OMARCHY_NET_CLASS_PATH="$tmp/sys"
+wireless_device=wlan0
 
 run_case() {
   export NS_DEVICE="$1"
@@ -96,6 +87,13 @@ if [[ -n $wireless_device ]]; then
   pass "--type reports a disconnected wireless device the same way the full line does"
   NS_NM_STATE="100 (connected)"
 fi
+
+run_case eth0
+output=$(omarchy-network-status --type)
+[[ $output == "ethernet" ]] || fail "--type reports a wired connection, got: $output"
+grep -q '^nmcli' "$call_log" && fail "a wired type query must not call nmcli"
+grep -q '^iw$' "$call_log" && fail "a wired type query must not call iw"
+pass "--type reports wired connections without wireless queries"
 
 output=$(omarchy-network-status --nonsense 2>&1 || true)
 [[ $output == *"--verbose|--type"* ]] || fail "usage names both modes"
