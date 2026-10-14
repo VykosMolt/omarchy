@@ -217,6 +217,15 @@ touch \
   "$icons/OmaSelected/48x48/apps/oma-test-format.png" \
   "$icons/OmaParentA/scalable/apps/oma-test-format.svg"
 
+# Raster sizes sort by number, not name: "64x64" and "48x48" both sort above
+# "256x256" as text, and the app grid draws icons larger than either.
+mkdir -p "$icons/hicolor/48x48/apps" "$icons/hicolor/64x64/apps" "$icons/hicolor/256x256/apps" \
+  "$icons/hicolor/48x48@2x/apps" "$icons/hicolor/64x64@2x/apps"
+touch \
+  "$icons/hicolor/48x48/apps/oma-test-raster.png" "$icons/hicolor/64x64/apps/oma-test-raster.png" \
+  "$icons/hicolor/256x256/apps/oma-test-raster.png" \
+  "$icons/hicolor/64x64/apps/oma-test-scaled.png" "$icons/hicolor/48x48@2x/apps/oma-test-scaled.png"
+
 mkdir -p "$tmpdir/bin"
 printf '#!/bin/bash\necho "%s"\n' "'OmaSelected'" > "$tmpdir/bin/gsettings"
 chmod +x "$tmpdir/bin/gsettings"
@@ -250,6 +259,8 @@ expect_theme oma-test-format OmaSelected "icon index exhausts a theme before the
 expect_theme oma-test-shipped hicolor "icon index still covers icons an app ships under hicolor"
 expect_theme oma-test-sized scalable "icon index prefers scalable over a fixed-size directory"
 expect_theme oma-test-mono 48x48 "icon index never resolves an app name to a symbolic glyph"
+expect_theme oma-test-raster 256x256 "icon index prefers the largest raster size"
+expect_theme oma-test-scaled 48x48@2x "icon index counts a @2x directory at its scaled size"
 
 [[ -z $(indexed oma-test-far) ]] ||
   fail "icon index ignores an Inherits shadowed by an earlier base directory" "$(indexed oma-test-far)"

@@ -81,4 +81,5 @@ assert(lines.includes(path.join(system, 'icons/theme/apps/name with spaces.png')
 const roots = fs.readFileSync(calls, 'utf8').trim().split('\n')
 assertEqual(new Set(roots).size, 5, 'scan visits all icon roots and pixmaps')
 assertEqual(roots.length, 5, 'scan visits each root only once')
+assert(roots.every(value => value === '/usr/share/pixmaps' || path.basename(value) === 'theme'), 'scan starts at the selected themes rather than walking every theme in a root')
 JS

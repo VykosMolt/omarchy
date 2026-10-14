@@ -156,9 +156,10 @@ Item {
     // A theme is exhausted before the next is consulted, SVGs first and then
     // PNGs across all its base directories, so a scalable icon further down the
     // theme order cannot outrank the configured theme's raster one. Scan each
-    // root once, then group the cached paths by theme, format and base order.
-    // Reverse path order prefers scalable directories; symbolic icons are dropped
-    // so the index cannot prefer a monochrome glyph.
+    // root once, starting only at the themes in that order, then group the
+    // paths by theme, format, base order and size: scalable first, then the
+    // largest fixed size, since a name sort would pick 64x64 over 256x256.
+    // Symbolic icons are dropped so the index cannot prefer a monochrome glyph.
     return [
       'theme=$(gsettings get org.gnome.desktop.interface icon-theme 2>/dev/null | tr -d "\'");',
       ': "${theme:=hicolor}";',
@@ -184,14 +185,15 @@ Item {
       '{',
       '  base_index=0;',
       '  for base in "${dirs[@]}"; do',
-      '    if [[ -d $base ]]; then',
-      '      find -L "$base" \\( -path "*/apps/*" -o -path "*/devices/*" \\) ! -path "*/symbolic/*" \\( -name "*.svg" -o -name "*.png" \\) 2>/dev/null |',
-      '        ICON_BASE="$base" ICON_BASE_INDEX="$base_index" awk \'BEGIN { n = split(ENVIRON["ICON_ORDER"], themes, "\\n"); for (i = 1; i <= n; i++) rank[themes[i]] = i } { relative = substr($0, length(ENVIRON["ICON_BASE"]) + 2); split(relative, parts, "/"); if (parts[1] in rank) printf "%d\\t%d\\t%d\\t%s\\n", rank[parts[1]], /\\.svg$/ ? 0 : 1, ENVIRON["ICON_BASE_INDEX"], $0 }\';',
+      '    roots=(); for name in "${order[@]}"; do [[ ! -d $base/$name ]] || roots+=("$base/$name"); done;',
+      '    if ((${#roots[@]})); then',
+      '      find -L "${roots[@]}" \\( -path "*/apps/*" -o -path "*/devices/*" \\) ! -path "*/symbolic/*" \\( -name "*.svg" -o -name "*.png" \\) 2>/dev/null |',
+      '        ICON_BASE="$base" ICON_BASE_INDEX="$base_index" awk \'BEGIN { n = split(ENVIRON["ICON_ORDER"], themes, "\\n"); for (i = 1; i <= n; i++) rank[themes[i]] = i } { relative = substr($0, length(ENVIRON["ICON_BASE"]) + 2); n = split(relative, parts, "/"); if (!(parts[1] in rank)) next; size = 0; for (i = 2; i < n; i++) { if (parts[i] == "scalable") { size = 1000000; continue }; if (!match(parts[i], /^[0-9]+/)) continue; s = substr(parts[i], 1, RLENGTH) + 0; if (match(parts[i], /@[0-9]+/)) s *= substr(parts[i], RSTART + 1, RLENGTH - 1); if (s > size) size = s }; printf "%d\\t%d\\t%d\\t%d\\t%s\\n", rank[parts[1]], /\\.svg$/ ? 0 : 1, ENVIRON["ICON_BASE_INDEX"], -size, $0 }\';',
       '    fi;',
       '    ((base_index += 1));',
       '  done;',
-      '  find /usr/share/pixmaps -maxdepth 1 \\( -name "*.svg" -o -name "*.png" \\) 2>/dev/null | awk \'{ printf "999999\\t%d\\t0\\t%s\\n", /\\.svg$/ ? 0 : 1, $0 }\';',
-      '} | sort -t $\'\\t\' -k1,1n -k2,2n -k3,3n -k4,4r | cut -f4-'
+      '  find /usr/share/pixmaps -maxdepth 1 \\( -name "*.svg" -o -name "*.png" \\) 2>/dev/null | awk \'{ printf "999999\\t%d\\t0\\t0\\t%s\\n", /\\.svg$/ ? 0 : 1, $0 }\';',
+      '} | sort -t $\'\\t\' -k1,1n -k2,2n -k3,3n -k4,4n -k5,5r | cut -f5-'
     ].join(' ')
   }
 
