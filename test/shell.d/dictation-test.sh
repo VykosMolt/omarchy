@@ -359,6 +359,9 @@ cp "$hook" "$test_tmp/original-hook"
 bash -euo pipefail "$ROOT/migrations/1791506046.sh" >/dev/null
 [[ ! -e $hook ]] || fail "the exact obsolete invitation is retired"
 bash -euo pipefail "$ROOT/migrations/1791506046.sh" >/dev/null
+sed -E 's/--exec (.*)$/--exec "\1"/' "$test_tmp/original-hook" >"$hook"
+bash -euo pipefail "$ROOT/migrations/1791506046.sh" >/dev/null
+[[ ! -e $hook ]] || fail "the invitation v4.0.0 copied is retired"
 cp "$test_tmp/original-hook" "$hook"
 printf '\n# My custom invitation\n' >>"$hook"
 cp "$hook" "$test_tmp/custom-hook"
